@@ -2,7 +2,7 @@
 /**
  * Plugin Name: User Session Control
  * Description: View and manage all active user sessions in a custom admin screen.
- * Version: 0.2.0
+ * Version: 0.2.1
  * Author: Frankie Jarrett
  * Author URI: http://frankiejarrett.com
  * License: GPLv2+
@@ -12,7 +12,7 @@
 /**
  * Define plugin constants
  */
-define( 'USER_SESSION_CONTROL_VERSION', '0.2.0' );
+define( 'USER_SESSION_CONTROL_VERSION', '0.2.1' );
 define( 'USER_SESSION_CONTROL_PLUGIN', plugin_basename( __FILE__ ) );
 define( 'USER_SESSION_CONTROL_DIR', plugin_dir_path( __FILE__ ) );
 define( 'USER_SESSION_CONTROL_URL', plugin_dir_url( __FILE__ ) );
@@ -166,6 +166,8 @@ function usc_user_submenu_callback() {
 							'_wpnonce'   => wp_create_nonce( sprintf( 'destroy_session_nonce-%d', $user_id ) ),
 						)
 					);
+					$created    = strtotime( get_date_from_gmt( date( 'Y-m-d H:i:s', $result['created'] ) ) );
+					$expiration = strtotime( get_date_from_gmt( date( 'Y-m-d H:i:s', $result['expiration'] ) ) );
 					?>
 					<tr <?php echo ( 0 !== $i % 2 ) ? 'class="alternate"' : '' ?>>
 						<td class="username column-username">
@@ -191,12 +193,12 @@ function usc_user_submenu_callback() {
 						<td>
 							<strong><?php printf( __( '%s ago' ), human_time_diff( $result['created'] ) ) ?></strong>
 							<br>
-							<small><?php echo esc_html( get_date_from_gmt( date( 'Y-m-d H:i:s', $result['created'] ), $date_format ) ) ?></small>
+							<small><?php echo esc_html( date_i18n( $date_format, $created ) ) ?></small>
 						</td>
 						<td>
-							<strong><?php printf( __( 'in %s' ), human_time_diff( $result['expiration'] ) ) ?></strong>
+							<strong><?php printf( __( 'in %s', 'user-session-control' ), human_time_diff( $result['expiration'] ) ) ?></strong>
 							<br>
-							<small><?php echo esc_html( get_date_from_gmt( date( 'Y-m-d H:i:s', $result['expiration'] ), $date_format ) ) ?></small>
+							<small><?php echo esc_html( date_i18n( $date_format, $expiration ) ) ?></small>
 						</td>
 						<td><?php echo esc_html( $result['ip'] ) ?></td>
 					</tr>
