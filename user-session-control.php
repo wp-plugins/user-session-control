@@ -2,7 +2,7 @@
 /**
  * Plugin Name: User Session Control
  * Description: View and manage all active user sessions in a custom admin screen.
- * Version: 0.2.1
+ * Version: 0.2.2
  * Author: Frankie Jarrett
  * Author URI: http://frankiejarrett.com
  * License: GPLv2+
@@ -12,7 +12,7 @@
 /**
  * Define plugin constants
  */
-define( 'USER_SESSION_CONTROL_VERSION', '0.2.1' );
+define( 'USER_SESSION_CONTROL_VERSION', '0.2.2' );
 define( 'USER_SESSION_CONTROL_PLUGIN', plugin_basename( __FILE__ ) );
 define( 'USER_SESSION_CONTROL_DIR', plugin_dir_path( __FILE__ ) );
 define( 'USER_SESSION_CONTROL_URL', plugin_dir_url( __FILE__ ) );
@@ -40,7 +40,12 @@ add_action( 'plugins_loaded', 'usc_i18n' );
 function usc_register_user_submenu() {
 	add_submenu_page( 'users.php', __( 'User Session Control', 'user-session-control' ), __( 'Sessions', 'user-session-control' ), 'manage_options', 'user-session-control', 'usc_user_submenu_callback' );
 }
-add_action( 'admin_menu', 'usc_register_user_submenu' );
+
+if ( is_network_admin() ) {
+	add_action( 'network_admin_menu', 'usc_register_user_submenu' );
+} else {
+	add_action( 'admin_menu', 'usc_register_user_submenu' );
+}
 
 /**
  * Callback for the custom submenu screen content
@@ -100,16 +105,22 @@ function usc_user_submenu_callback() {
 	}
 
 	$columns = array(
-		'username' => __( 'Username', 'user-session-control' ),
-		'name'     => __( 'Name', 'user-session-control' ),
-		'email'    => __( 'E-mail', 'user-session-control' ),
-		'role'     => __( 'Role', 'user-session-control' ),
-		'created'  => __( 'Created', 'user-session-control' ),
-		'expires'  => __( 'Expires', 'user-session-control' ),
-		'ip'       => __( 'IP Address', 'user-session-control' ),
+		'username'   => __( 'Username', 'user-session-control' ),
+		'name'       => __( 'Name', 'user-session-control' ),
+		'email'      => __( 'E-mail', 'user-session-control' ),
+		'role'       => __( 'Role', 'user-session-control' ),
+		'created'    => __( 'Created', 'user-session-control' ),
+		'expiration' => __( 'Expires', 'user-session-control' ),
+		'ip'         => __( 'IP Address', 'user-session-control' ),
 	);
 
+	if ( is_network_admin() ) {
+		unset( $columns['role'] );
+	}
+
 	$users = usc_get_users_with_sessions();
+
+	global $wp_roles;
 	?>
 	<div class="wrap">
 
@@ -148,8 +159,7 @@ function usc_user_submenu_callback() {
 				<?php $i = 0 ?>
 				<?php foreach ( $results as $result ) : $i++ ?>
 					<?php
-					$roles       = get_option( 'wp_user_roles' );
-					$role_label  = ! empty( $roles[ $result['role'] ]['name'] ) ? translate_user_role( $roles[ $result['role'] ]['name'] ) : $result['role'];
+					$role_label  = ! empty( $wp_roles->roles[ $result['role'] ]['name'] ) ? translate_user_role( $wp_roles->roles[ $result['role'] ]['name'] ) : $result['role'];
 					$date_format = get_option( 'date_format', 'F j, Y' ) . ' @ ' . get_option( 'time_format', 'g:i A' );
 					$user_id     = absint( $result['user_id'] );
 					$edit_link   = add_query_arg(
@@ -166,14 +176,19 @@ function usc_user_submenu_callback() {
 							'_wpnonce'   => wp_create_nonce( sprintf( 'destroy_session_nonce-%d', $user_id ) ),
 						)
 					);
-					$created    = strtotime( get_date_from_gmt( date( 'Y-m-d H:i:s', $result['created'] ) ) );
-					$expiration = strtotime( get_date_from_gmt( date( 'Y-m-d H:i:s', $result['expiration'] ) ) );
+					$created    = is_network_admin() ? $result['created'] : strtotime( get_date_from_gmt( date( 'Y-m-d H:i:s', $result['created'] ) ) );
+					$expiration = is_network_admin() ? $result['expiration'] : strtotime( get_date_from_gmt( date( 'Y-m-d H:i:s', $result['expiration'] ) ) );
 					?>
 					<tr <?php echo ( 0 !== $i % 2 ) ? 'class="alternate"' : '' ?>>
 						<td class="username column-username">
 							<?php echo get_avatar( $user_id, 32 ) ?>
 							<strong>
-								<?php echo esc_html( $result['username'] ) ?>
+								<a href="<?php echo esc_url( $edit_link ) ?>">
+									<?php echo esc_html( $result['username'] ) ?>
+								</a>
+								<?php if ( is_multisite() && is_super_admin( $user_id ) ) : ?>
+									- <?php _e( 'Super Admin' ) ?>
+								<?php endif; ?>
 							</strong>
 							<br>
 							<div class="row-actions">
@@ -189,7 +204,11 @@ function usc_user_submenu_callback() {
 						<td>
 							<a href="mailto:<?php echo esc_attr( $result['email'] ) ?>" title="<?php esc_attr_e( 'E-mail:', 'user-session-control' ) ?> <?php echo esc_attr( $result['email'] ) ?>"><?php echo esc_html( $result['email'] ) ?></a>
 						</td>
-						<td><?php echo esc_html( $role_label ) ?></td>
+
+						<?php if ( ! is_network_admin() ) : ?>
+							<td><?php echo esc_html( $role_label ) ?></td>
+						<?php endif; ?>
+
 						<td>
 							<strong><?php printf( __( '%s ago' ), human_time_diff( $result['created'] ) ) ?></strong>
 							<br>
@@ -221,7 +240,7 @@ function usc_get_all_sessions_raw() {
 	$results  = array();
 	$sessions = $wpdb->get_results( "SELECT meta_value FROM $wpdb->usermeta WHERE meta_key = 'session_tokens' LIMIT 0, 9999" );
 	$sessions = wp_list_pluck( $sessions, 'meta_value' );
-	$sessions = array_map( 'unserialize', $sessions );
+	$sessions = array_map( 'maybe_unserialize', $sessions );
 
 	foreach ( $sessions as $session ) {
 		$results = array_merge( $results, $session );
@@ -238,6 +257,7 @@ function usc_get_all_sessions_raw() {
 function usc_get_users_with_sessions() {
 	$args = array(
 		'number'     => 9999,
+		'blog_id'    => is_network_admin() ? 0 : get_current_blog_id(),
 		'meta_query' => array(
 			array(
 				'key'     => 'session_tokens',
